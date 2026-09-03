@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owner() { return signedIn() && request.auth.uid == 'OWNER_UIDをここへ貼り付け'; }
+    function role() { return get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data; }
+    function schoolAdmin(schoolId) { return signedIn() && exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid)) && role().schoolIds.hasAny([schoolId]); }
+
+    match /system/surveyIndex { allow read: if true; allow write: if owner(); }
+    match /surveys/{schoolId} { allow read: if true; allow write: if owner() || schoolAdmin(schoolId); }
+    match /graduateSurveyResponses/{responseId} {
+      allow create: if request.resource.data.keys().hasOnly(['school','answers','createdAt'])
+                    && request.resource.data.school is string && request.resource.data.answers is map
+                    && request.resource.data.createdAt == request.time;
+      allow read: if owner() || schoolAdmin(resource.data.school);
+      allow update, delete: if false;
+    }
+    match /adminUsers/{userId} { allow read: if owner() || (signedIn() && request.auth.uid == userId); allow write: if owner(); }
+  }
+}
